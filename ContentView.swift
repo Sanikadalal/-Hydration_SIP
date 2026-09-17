@@ -19,12 +19,12 @@ struct ContentView: View {
     @State private var mascotOffset: CGFloat = -200
     
     let messages = [
-        "Hehe… paani pilo 💧",
-        "One sip? 🥺",
-        "Hydration check 👀",
-        "Your bottle is waiting."
+        "Meow… paani pilo 💧",
+        "Just one sip? 😸",
+        "Hydration check! 🐾",
+        "Your bowl is waiting."
     ]
-    @State private var activeMessage = "Hehe… paani pilo 💧"
+    @State private var activeMessage = "Meow… paani pilo 💧"
     
     var body: some View {
         ZStack(alignment: .top) {
@@ -49,7 +49,7 @@ struct ContentView: View {
                 .transition(.opacity)
             }
             
-            // 🐒 THE CHARACTER LAYER
+            // 🐾 THE CHARACTER LAYER
             VStack(spacing: -10) {
                 // Procedural 3D Mascot!
                 Interactive3DMascot(state: state)
@@ -222,48 +222,56 @@ struct Interactive3DMascot: View {
         // Transparent background
         scene.background.contents = CGColor(gray: 0, alpha: 0)
         
-        // --- 1. Construct the 3D Monkey head ---
+        // --- 1. Construct the Procedural 3D Cat! ---
         
         mascotNode = SCNNode()
         
-        // Base Face
-        let headGeo = SCNBox(width: 1.8, height: 1.5, length: 1.5, chamferRadius: 0.6)
-        headGeo.firstMaterial?.diffuse.contents = CGColor(red: 0.9, green: 0.6, blue: 0.3, alpha: 1.0)
+        // Base Face (Crisp Soft White Cat)
+        let headGeo = SCNBox(width: 1.8, height: 1.4, length: 1.5, chamferRadius: 0.6)
+        headGeo.firstMaterial?.diffuse.contents = CGColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0)
         headGeo.firstMaterial?.specular.contents = CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)
-        headGeo.firstMaterial?.shininess = 30
+        headGeo.firstMaterial?.shininess = 40
         let head = SCNNode(geometry: headGeo)
         
-        // Eyes
+        // Eyes (Big cute black beads)
         let eyeGeo = SCNSphere(radius: 0.18)
         eyeGeo.firstMaterial?.diffuse.contents = CGColor(gray: 0.1, alpha: 1.0)
         
         let leftEye = SCNNode(geometry: eyeGeo)
-        leftEye.position = SCNVector3(-0.35, 0.1, 0.8)
+        leftEye.position = SCNVector3(-0.4, 0.05, 0.8)
         let rightEye = SCNNode(geometry: eyeGeo)
-        rightEye.position = SCNVector3(0.35, 0.1, 0.8)
+        rightEye.position = SCNVector3(0.4, 0.05, 0.8)
+        
+        // Nose (Tiny pink dot)
+        let noseGeo = SCNSphere(radius: 0.08)
+        noseGeo.firstMaterial?.diffuse.contents = CGColor(red: 1.0, green: 0.5, blue: 0.6, alpha: 1.0)
+        let nose = SCNNode(geometry: noseGeo)
+        nose.position = SCNVector3(0, -0.1, 0.85)
         
         // Cute Blushes
         let blushGeo = SCNSphere(radius: 0.15)
-        blushGeo.firstMaterial?.diffuse.contents = CGColor(red: 1.0, green: 0.4, blue: 0.5, alpha: 0.9)
+        blushGeo.firstMaterial?.diffuse.contents = CGColor(red: 1.0, green: 0.6, blue: 0.7, alpha: 0.8)
         let leftBlush = SCNNode(geometry: blushGeo)
-        leftBlush.position = SCNVector3(-0.6, -0.25, 0.75)
+        leftBlush.position = SCNVector3(-0.6, -0.15, 0.75)
         let rightBlush = SCNNode(geometry: blushGeo)
-        rightBlush.position = SCNVector3(0.6, -0.25, 0.75)
+        rightBlush.position = SCNVector3(0.6, -0.15, 0.75)
         
-        // Ears
-        let earGeo = SCNCylinder(radius: 0.35, height: 0.2)
-        earGeo.firstMaterial?.diffuse.contents = CGColor(red: 0.8, green: 0.5, blue: 0.2, alpha: 1.0)
+        // Cat Ears (Cones)
+        let earGeo = SCNCone(topRadius: 0.0, bottomRadius: 0.35, height: 0.6)
+        earGeo.firstMaterial?.diffuse.contents = CGColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0)
+        
         let leftEar = SCNNode(geometry: earGeo)
-        leftEar.position = SCNVector3(-0.95, 0, 0)
-        leftEar.eulerAngles = SCNVector3(Float.pi/2, 0, 0)
+        leftEar.position = SCNVector3(-0.55, 0.7, 0)
+        leftEar.eulerAngles = SCNVector3(0, 0, Float.pi/8) // Tilt out
         
         let rightEar = SCNNode(geometry: earGeo)
-        rightEar.position = SCNVector3(0.95, 0, 0)
-        rightEar.eulerAngles = SCNVector3(Float.pi/2, 0, 0)
+        rightEar.position = SCNVector3(0.55, 0.7, 0)
+        rightEar.eulerAngles = SCNVector3(0, 0, -Float.pi/8) // Tilt out
         
-        // Assemble
+        // Assemble Head
         head.addChildNode(leftEye)
         head.addChildNode(rightEye)
+        head.addChildNode(nose)
         head.addChildNode(leftBlush)
         head.addChildNode(rightBlush)
         head.addChildNode(leftEar)

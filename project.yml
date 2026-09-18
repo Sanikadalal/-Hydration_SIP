@@ -1,0 +1,13 @@
+name: Sip
+options:
+  bundleIdPrefix: com.example
+targets:
+  Sip:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources: [Sources]
+    info:
+      path: Info.plist
+      properties:
+        LSUIElement: true

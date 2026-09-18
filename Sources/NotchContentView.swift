@@ -1,273 +1,247 @@
 import SwiftUI
-import SceneKit
+import AppKit
+
+// MARK: - Mascot State
+
+
+// MARK: - Panel Size Helper
+
+extension MascotState {
+    /// The notch-pill panel size for each mascot state.
+    var panelSize: CGSize {
+        switch self {
+        case .hidden:      return CGSize(width: 220, height: 0)
+        case .peeking:     return CGSize(width: 126, height: 80)
+        case .hanging:     return CGSize(width: 220, height: 170)
+        case .pouring:     return CGSize(width: 220, height: 200)
+        case .waiting:     return CGSize(width: 260, height: 220)
+        case .celebrating: return CGSize(width: 260, height: 220)
+        case .retreating:  return CGSize(width: 126, height: 80)
+        }
+    }
+
+    var isVisible: Bool { self != .hidden }
+}
+
+// MARK: - NotchContentView
 
 struct NotchContentView: View {
     @EnvironmentObject var hydrationManager: HydrationManager
-    @State private var isExpanded: Bool = false
-    @State private var floatOffset: CGFloat = 5
-    
-    let animationTrigger = NotificationCenter.default.publisher(for: NSNotification.Name("TriggerAnimation"))
+
+    @State private var mascotState: MascotState = .hidden
+    @State private var contentOpacity: Double   = 0
+    @State private var contentScale: Double     = 0.8
+
+    /// Notification posted by HydrationManager / AppDelegate when it's time to show.
+    let animationTrigger = NotificationCenter.default.publisher(
+        for: NSNotification.Name("TriggerAnimation")
+    )
+
+    private let spring = Animation.spring(response: 0.55, dampingFraction: 0.72)
+
+    // MARK: Body
 
     var body: some View {
-        VStack(spacing: 0) {
-            if isExpanded {
-                // The hanging stem
-                stem
-                    .transition(.move(edge: .top))
-                    .zIndex(1)
-                
-                // The main portal / ring
-                mainPortal
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.2, anchor: .top).combined(with: .opacity),
-                        removal: .scale(scale: 0.2, anchor: .top).combined(with: .opacity)
-                    ))
-                    .zIndex(0)
-                    
-                // Optional UI controls below the ring
-                if hydrationManager.isOnboarded && !hydrationManager.showVictory {
-                    uiControls
-                        .padding(.top, 16)
-                        .transition(.opacity)
-                }
+        ZStack(alignment: .top) {
+            notchPill
+
+            if mascotState != .hidden {
+                contentStack
+                    .opacity(contentOpacity)
+                    .scaleEffect(contentScale, anchor: .top)
             }
         }
-        .frame(width: 400, height: 600, alignment: .top)
-        .ignoresSafeArea() // This fixes the gap between the notch and UI!
-        .onReceive(animationTrigger) { _ in
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.5, blendDuration: 0)) {
-                isExpanded = true
-            }
-        }
+        // Animate the outer frame with the panel size
+        .frame(
+            width:  mascotState.panelSize.width,
+            height: max(mascotState.panelSize.height, 1),
+            alignment: .top
+        )
+        .animation(spring, value: mascotState)
+        .onReceive(animationTrigger) { _ in startSequence() }
         .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.5, blendDuration: 0)) {
-                    isExpanded = true
-                }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                startSequence()
             }
         }
     }
-    
-    var stem: some View {
-        Rectangle()
-            .fill(Color.black)
-            .frame(width: 40, height: 40)
-            .offset(y: -5)
-            .padding(.bottom, -5)
+
+    // MARK: - Notch Pill Background
+
+    private var notchPill: some View {
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+            .fill(.black)
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .opacity(0.12)
+            )
+            .frame(
+                width:  mascotState.panelSize.width,
+                height: max(mascotState.panelSize.height, 1)
+            )
+            .animation(spring, value: mascotState)
     }
-    
-    var mainPortal: some View {
-        ZStack {
-            if !hydrationManager.isOnboarded {
-                onboardingView
-            } else if hydrationManager.showVictory {
-                victoryView
-            } else {
-                mascotView
+
+    // MARK: - Content Stack
+
+    @ViewBuilder
+    private var contentStack: some View {
+        VStack(spacing: 0) {
+            // Mascot body — height varies per state
+            MascotView(state: mascotState)
+                .frame(height: mascotContentHeight)
+                .clipped()
+
+            // Waiting → show action buttons
+            if mascotState == .waiting {
+                actionButtons
+                    .padding(.top, 6)
+                    .padding(.bottom, 12)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal:   .opacity
+                    ))
+            }
+
+            // Celebrating → show progress & streak
+            if mascotState == .celebrating {
+                celebrationInfo
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private var mascotContentHeight: CGFloat {
+        switch mascotState {
+        case .hidden:                return 0
+        case .peeking, .retreating:  return 56
+        case .hanging:               return 140
+        case .pouring:               return 155
+        case .waiting, .celebrating: return 155
+        }
+    }
+
+    // MARK: - Action Buttons
+
+    private var actionButtons: some View {
+        HStack(spacing: 10) {
+            Button { snooze() } label: {
+                Text("Snooze 😴")
+                    .font(.system(.caption, design: .rounded).bold())
+                    .foregroundStyle(.white.opacity(0.78))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.white.opacity(0.13), in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            Button { confirmDrank() } label: {
+                Text("Drank 💧")
+                    .font(.system(.caption, design: .rounded).bold())
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(Color(hex: "4FC3F7"), in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Celebration Info
+
+    private var celebrationInfo: some View {
+        VStack(spacing: 3) {
+            let done  = hydrationManager.glassesCount
+            let total = hydrationManager.dailyGoal
+
+            Text("🎉 \(done)/\(total) glasses!")
+                .font(.system(.caption, design: .rounded).bold())
+                .foregroundStyle(.white)
+
+            if hydrationManager.streak > 1 {
+                Text("🔥 \(hydrationManager.streak) day streak!")
+                    .font(.system(.caption2, design: .rounded))
+                    .foregroundStyle(.yellow)
             }
         }
     }
-    
-    var mascotView: some View {
-        ZStack {
-            Circle()
-                .fill(Color.black)
-                .frame(width: 250, height: 250)
-            
-            // Try loading a 3D model first (.usdz or .scn)
-            if let usdzUrl = Bundle.module.url(forResource: "monkey", withExtension: "usdz") ?? Bundle.module.url(forResource: "monkey", withExtension: "scn") {
-                SceneView(
-                    scene: try? SCNScene(url: usdzUrl, options: nil),
-                    options: [.autoenablesDefaultLighting, .allowsCameraControl],
-                    preferredFramesPerSecond: 60,
-                    antialiasingMode: .multisampling4X
-                )
-                .frame(width: 250, height: 250)
-                .clipShape(Circle())
-            } 
-            // Fallback to our new gorgeous 2D mascot
-            else if let url = Bundle.module.url(forResource: "mascot2d", withExtension: "jpg"),
-               let nsImage = NSImage(contentsOf: url) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 250, height: 250)
-                    .clipShape(Circle())
-                    .offset(y: floatOffset)
-                    .onAppear {
-                        withAnimation(Animation.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                            floatOffset = -5
-                        }
-                    }
-            } else {
-                Circle().fill(Color.gray).frame(width: 250, height: 250)
-            }
-            
-            // Glowing border
-            Circle()
-                .strokeBorder(Color.white, lineWidth: 6)
-                .frame(width: 250, height: 250)
-                .shadow(color: Color.blue.opacity(0.8), radius: 15, x: 0, y: 0)
-        }
+
+    // MARK: - State Sequence
+
+    private func startSequence() {
+        // Only start from a resting state
+        guard mascotState == .hidden || mascotState == .retreating else { return }
+
+        transition(to: .peeking, after: 0.0)
+        transition(to: .hanging, after: 0.7)
+        transition(to: .pouring, after: 1.5)
+        transition(to: .waiting, after: 3.2)
     }
-    
-    var victoryView: some View {
-        ZStack {
-            Circle()
-                .fill(Color.black)
-                .frame(width: 250, height: 250)
-            
-            if let url = Bundle.module.url(forResource: "victory", withExtension: "jpg"),
-               let nsImage = NSImage(contentsOf: url) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 250, height: 250)
-                    .clipShape(Circle())
-            }
-            
-            Circle()
-                .strokeBorder(Color.yellow, lineWidth: 6)
-                .frame(width: 250, height: 250)
-                .shadow(color: Color.orange.opacity(0.8), radius: 15, x: 0, y: 0)
-                
-            VStack {
-                Spacer()
-                Text("Goal Reached! 🏆")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .shadow(radius: 5)
-                    .padding(.bottom, 8)
-                
-                Button("Reset for tomorrow") {
-                    withAnimation {
-                        hydrationManager.resetDaily()
-                    }
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.7))
-                .cornerRadius(16)
-                .padding(.bottom, 20)
-            }
-            .frame(width: 250, height: 250)
-        }
-    }
-    
-    var onboardingView: some View {
-        ZStack {
-            Circle()
-                .fill(Color.black.opacity(0.9))
-                .frame(width: 320, height: 320)
-            
-            Circle()
-                .strokeBorder(Color.white.opacity(0.3), lineWidth: 4)
-                .frame(width: 320, height: 320)
-                
-            VStack(spacing: 16) {
-                Text("Let's Get Started!")
-                    .font(.title3.bold())
-                    .foregroundColor(.white)
-                
-                HStack {
-                    Text("Weight (kg):")
-                        .foregroundColor(.white)
-                    TextField("60", value: $hydrationManager.weightKg, format: .number)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 60)
-                }
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Activity Level:")
-                        .foregroundColor(.white)
-                        .font(.caption)
-                    Picker("", selection: $hydrationManager.activityLevel) {
-                        Text("Low").tag(1)
-                        Text("Medium").tag(2)
-                        Text("High").tag(3)
-                    }
-                    .pickerStyle(SegmentedPickerStyle())
-                    .frame(width: 150)
-                }
-                
-                Button(action: {
-                    withAnimation {
-                        hydrationManager.completeOnboarding()
-                    }
-                }) {
-                    Text("Save & Start")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(Color.white)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 10)
-            }
-            .padding()
-            .frame(width: 280, height: 280)
-        }
-    }
-    
-    var uiControls: some View {
-        VStack(spacing: 12) {
-            Text(hydrationManager.currentMessage)
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                .foregroundColor(.white)
-                .shadow(radius: 5)
-            
-            HStack(spacing: 16) {
-                Button(action: hideMascot) {
-                    Text("Snooze")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.white.opacity(0.8))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.2))
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                
-                Button(action: completeHydration) {
-                    Text("Drank it 💧")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
-                        .background(Color.white)
-                        .clipShape(Capsule())
-                        .shadow(color: .white.opacity(0.3), radius: 5, x: 0, y: 0)
-                }
-                .buttonStyle(.plain)
-            }
-            
-            ProgressView(value: Double(hydrationManager.totalDrankMl), total: Double(hydrationManager.dailyGoalMl))
-                .progressViewStyle(LinearProgressViewStyle(tint: .blue))
-                .frame(width: 200)
-                .padding(.top, 8)
-                
-            Text("\(hydrationManager.totalDrankMl) / \(hydrationManager.dailyGoalMl) ml")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.8))
-        }
-    }
-    
-    private func completeHydration() {
-        hydrationManager.hydrate(amount: 250)
-        if !hydrationManager.showVictory {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                hideMascot()
+
+    private func transition(to state: MascotState, after delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            withAnimation(spring) {
+                mascotState    = state
+                contentOpacity = 1
+                contentScale   = 1
             }
         }
     }
-    
-    private func hideMascot() {
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.7, blendDuration: 0)) {
-            isExpanded = false
+
+    private func confirmDrank() {
+        hydrationManager.logDrink()
+        withAnimation(spring) { mascotState = .celebrating }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { retreat() }
+    }
+
+    private func snooze() {
+        hydrationManager.snooze(minutes: 10)
+        retreat()
+    }
+
+    private func retreat() {
+        withAnimation(spring) { mascotState = .retreating }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            withAnimation(spring) {
+                mascotState    = .hidden
+                contentOpacity = 0
+                contentScale   = 0.8
+            }
         }
     }
 }
 
+// MARK: - Color Hex Extension
+
+extension Color {
+    init(hex: String) {
+        let h = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: h).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch h.count {
+        case 3:  (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6:  (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8:  (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default: (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(.sRGB,
+                  red:     Double(r) / 255,
+                  green:   Double(g) / 255,
+                  blue:    Double(b) / 255,
+                  opacity: Double(a) / 255)
+    }
+}
+
+// MARK: - Preview
+
+#Preview {
+    NotchContentView()
+        .environmentObject(HydrationManager.shared)
+        .frame(width: 300, height: 300)
+        .background(Color.gray.opacity(0.3))
+}

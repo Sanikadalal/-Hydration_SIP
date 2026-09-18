@@ -1,71 +1,68 @@
+// AppDelegate.swift
+// Sip – macOS Menu Bar hydration reminder
+
 import AppKit
 import SwiftUI
 
-class AppDelegate: NSObject, NSApplicationDelegate {
-    var statusItem: NSStatusItem?
-    var notchWindow: CustomNotchWindow?
-    let hydrationManager = HydrationManager()
+final class AppDelegate: NSObject, NSApplicationDelegate {
+
+    // ------------------------------------------------------------------
+    // MARK: - Core objects
+    // ------------------------------------------------------------------
+
+    /// Central state / business-logic manager (created first).
+    private(set) var hydrationManager: HydrationManager = .shared
+
+    /// Owns the NSStatusItem that lives in the system menu bar.
+    private var menuBarController: MenuBarController?
+
+    /// Owns the transparent NSPanel anchored to the notch.
+    private(set) var notchWindowController: NotchWindowController?
+
+    // ------------------------------------------------------------------
+    // MARK: - NSApplicationDelegate
+    // ------------------------------------------------------------------
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Run as a background/menu bar app without a dock icon
+        // 1. Prevent a dock icon – belt-and-suspenders complement to Info.plist.
         NSApp.setActivationPolicy(.accessory)
-        
-        setupMenuBar()
-        setupNotchWindow()
+
+        // 2. Build the notch window (before the menu bar so it's ready to show).
+        let nwc = NotchWindowController()
+        notchWindowController = nwc
+        nwc.updatePosition()
+
+        // 3. Build the menu-bar status item.
+        let mbc = MenuBarController(
+            hydrationManager: hydrationManager
+        )
+        menuBarController = mbc
+
+        // 4. Start the hydration reminder timer.
+        hydrationManager.startTimer()
+
+        // 5. Listen for screen-layout changes (resolution switch, external display, etc.)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(screenParametersDidChange(_:)),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
     }
 
-    func setupMenuBar() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "drop.fill", accessibilityDescription: "Hydration")
+    func applicationWillTerminate(_ notification: Notification) {
+        hydrationManager.stopTimer()
+    }
+
+    // ------------------------------------------------------------------
+    // MARK: - Screen parameter changes
+    // ------------------------------------------------------------------
+
+    @objc private func screenParametersDidChange(_ notification: Notification) {
+        // Give the OS a moment to finish resizing before we recompute.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.notchWindowController?.updatePosition()
         }
-        
-        let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Trigger Reminder", action: #selector(triggerReminder), keyEquivalent: "t"))
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-        
-        statusItem?.menu = menu
-    }
-    
-    @objc func triggerReminder() {
-        hydrationManager.triggerReminder()
-        // Also trigger the UI animation
-        NotificationCenter.default.post(name: NSNotification.Name("TriggerAnimation"), object: nil)
-    }
-
-    func setupNotchWindow() {
-        guard let screen = NSScreen.main else { return }
-        
-        let windowWidth: CGFloat = 350
-        let windowHeight: CGFloat = 400
-        let windowRect = NSRect(x: screen.frame.midX - windowWidth / 2, 
-                                y: screen.frame.maxY - windowHeight, 
-                                width: windowWidth, 
-                                height: windowHeight)
-                                
-        notchWindow = CustomNotchWindow(contentRect: windowRect)
-        
-        // Pass HydrationManager into the root view
-        let rootView = NotchContentView().environmentObject(hydrationManager)
-        let hostingController = NSHostingController(rootView: rootView)
-        hostingController.view.backgroundColor = .clear
-        
-        notchWindow?.contentView = hostingController.view
-        notchWindow?.makeKeyAndOrderFront(nil)
     }
 }
 
-class CustomNotchWindow: NSWindow {
-    init(contentRect: NSRect) {
-        super.init(contentRect: contentRect, styleMask: .borderless, backing: .buffered, defer: false)
-        
-        self.isOpaque = false
-        self.backgroundColor = .clear
-        self.hasShadow = false
-        self.level = .popUpMenu // Or .statusBar, ensures it's above normal windows
-        
-        // This makes sure clicks on transparent parts pass through to the apps below
-        self.ignoresMouseEvents = false
-    }
-}
